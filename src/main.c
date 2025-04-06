@@ -23,7 +23,11 @@
 #include <zephyr/bluetooth/services/bas.h>
 #include <zephyr/bluetooth/services/dis.h>
 
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/class/usb_hid.h>
+
 LOG_MODULE_REGISTER(gamepad, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(usb_gamepad, LOG_LEVEL_DBG);
 
 #if DT_NODE_HAS_STATUS(DT_ALIAS(expanderreset), okay)
 static const struct gpio_dt_spec expander_reset = GPIO_DT_SPEC_GET(DT_ALIAS(expanderreset), gpios);
@@ -42,6 +46,9 @@ static const struct gpio_dt_spec expander_reset = GPIO_DT_SPEC_GET(DT_ALIAS(expa
 
 #define SYS_BUTTON_LONG_PRESS_MS 3000
 #define SYS_BUTTON_VERY_LONG_PRESS_MS 10000
+
+#define HID_GAMEPAD_REPORT_ID 0x01
+#define HID_GAMEPAD_REPORT_SIZE 6
 
 struct __attribute__((packed)) report_t {
     uint8_t dpad;
@@ -367,6 +374,71 @@ static uint8_t const report_map[] = {
     0xC0,  // End Collection
 };
 
+static const uint8_t hid_report_desc[] = {
+    0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+    0x09, 0x05,        // Usage (Game Pad)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, HID_GAMEPAD_REPORT_ID, //   Report ID
+    0x05, 0x09,        //   Usage Page (Button)
+    0x19, 0x01,        //   Usage Minimum (Button 1)
+    0x29, 0x10,        //   Usage Maximum (Button 16)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x10,        //   Report Count (16)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
+    0x05, 0x01,        //   Usage Page (Generic Desktop Ctrls)
+    0x09, 0x30,        //   Usage (X)
+    0x09, 0x31,        //   Usage (Y)
+    0x15, 0x81,        //   Logical Minimum (-127)
+    0x25, 0x7F,        //   Logical Maximum (127)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x02,        //   Report Count (2)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
+    0xC0               // End Collection
+};
+
+static uint8_t gamepad_report[HID_GAMEPAD_REPORT_SIZE];
+
+static void send_gamepad_report(void)
+{
+    // Example: Set buttons and joystick values
+    gamepad_report[0] = 0x01; // Button 1 pressed
+    gamepad_report[1] = 0x00; // Other buttons released
+    gamepad_report[2] = 0x00; // X-axis (centered)
+    gamepad_report[3] = 0x00; // Y-axis (centered)
+    gamepad_report[4] = 0x00; // Z-axis (centered)
+    gamepad_report[5] = 0x00; // Rz-axis (centered)
+
+    hid_int_ep_write(gamepad_report, sizeof(gamepad_report), NULL);
+}
+
+static void hid_status_cb(enum usb_dc_status_code status, const uint8_t *param)
+{
+    if (status == USB_DC_CONFIGURED) {
+        LOG_INF("USB configured");
+    }
+}
+
+static int hid_get_report_cb(const struct device *dev, struct usb_setup_packet *setup,
+                             int32_t *len, uint8_t **data)
+{
+    LOG_INF("HID Get Report");
+    return 0;
+}
+
+static int hid_set_report_cb(const struct device *dev, struct usb_setup_packet *setup,
+                             int32_t *len, uint8_t **data)
+{
+    LOG_INF("HID Set Report");
+    return 0;
+}
+
+static const struct hid_ops ops = {
+    .get_report = hid_get_report_cb,
+    .set_report = hid_set_report_cb,
+};
+
 static void hid_init(void) {
     struct bt_hids_init_param hids_init_param = { 0 };
     struct bt_hids_inp_rep* hids_inp_rep;
@@ -472,22 +544,36 @@ static void handle_buttons() {
     }
 }
 
-int main() {
+void main(void)
+{
+    int ret;
+
+    LOG_INF("Starting USB Gamepad");
+
+    ret = usb_enable(hid_status_cb);
+    if (ret != 0) {
+        LOG_ERR("Failed to enable USB");
+        return;
+    }
+
+    usb_hid_register_device(hid_report_desc, sizeof(hid_report_desc), &ops);
+    usb_hid_init();
+
     LOG_INF("Gamepad nRF52");
 
     if (!CHK(bt_conn_auth_cb_register(&conn_auth_callbacks))) {
-        return 0;
+        return;
     }
 
     if (!CHK(bt_conn_auth_info_cb_register(&conn_auth_info_callbacks))) {
-        return 0;
+        return;
     }
 
     report_init();
     hid_init();
 
     if (!CHK(bt_enable(NULL))) {
-        return 0;
+        return;
     }
 
     settings_load();
@@ -497,5 +583,7 @@ int main() {
     while (1) {
         k_sleep(K_MSEC(1));
         handle_buttons();
+        send_gamepad_report();
+        k_sleep(K_MSEC(10));
     }
 }
