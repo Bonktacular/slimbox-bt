@@ -105,7 +105,7 @@
 	pinctrl-names = "default", "sleep";
 
 	expander1: mcp230xx@20 {
-		compatible = "microchip,mcp230xx";
+		compatible = "microchip,mcp23017";
 		reg = <0x20>;
 		gpio-controller;
 		#gpio-cells = <2>;
@@ -176,5 +176,13 @@
 
 zephyr_udc0: &usbd {
 	compatible = "nordic,nrf-usbd";
+	status = "okay";
+};
+
+&cryptocell {
+	status = "disabled";
+};
+
+&clock {
 	status = "okay";
 };
