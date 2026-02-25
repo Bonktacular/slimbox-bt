@@ -9,7 +9,7 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/poweroff.h>
-#include <zephyr/sys/printk.h>
+#include <zephyr/sys/printk.h> 
 #include <zephyr/sys/reboot.h>
 #include <zephyr/types.h>
 
