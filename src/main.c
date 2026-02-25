@@ -471,7 +471,51 @@ static void handle_buttons() {
     
     // Alter SOCD cleaning to prefer the last direction pressed
     // int dpad = gpio_pin_get_dt(&buttons[6]) | (gpio_pin_get_dt(&buttons[8]) << 1) | (gpio_pin_get_dt(&buttons[9]) << 2) | (gpio_pin_get_dt(&buttons[7]) << 3);
-    int dpad = (gpio_pin_get_dt(&buttons[6]) << 0) | (gpio_pin_get_dt(&buttons[7]) << 1) | (gpio_pin_get_dt(&buttons[8]) << 2) | (gpio_pin_get_dt(&buttons[9]) << 3);
+    // SOCD last-win resolution for dpad
+    static int prev_up, prev_down, prev_left, prev_right;
+    static int last_vertical;    // 0 = neutral, 1 = up, 2 = down
+    static int last_horizontal;  // 0 = neutral, 1 = right, 2 = left
+
+    int cur_up = gpio_pin_get_dt(&buttons[6]);
+    int cur_down = gpio_pin_get_dt(&buttons[8]);
+    int cur_left = gpio_pin_get_dt(&buttons[9]);
+    int cur_right = gpio_pin_get_dt(&buttons[7]);
+
+    // Detect rising edges and update last-win state
+    if (cur_up && !prev_up)
+        last_vertical = 1;
+    if (cur_down && !prev_down)
+        last_vertical = 2;
+    if (!cur_up && !cur_down)
+        last_vertical = 0;
+    if (cur_up && !cur_down)
+        last_vertical = 1;
+    if (!cur_up && cur_down)
+        last_vertical = 2;
+
+    if (cur_right && !prev_right)
+        last_horizontal = 1;
+    if (cur_left && !prev_left)
+        last_horizontal = 2;
+    if (!cur_right && !cur_left)
+        last_horizontal = 0;
+    if (cur_right && !cur_left)
+        last_horizontal = 1;
+    if (!cur_right && cur_left)
+        last_horizontal = 2;
+
+    prev_up = cur_up;
+    prev_down = cur_down;
+    prev_left = cur_left;
+    prev_right = cur_right;
+
+    // Resolve directions: up=bit0, down=bit1, left=bit2, right=bit3
+    int resolved_up = (last_vertical == 1) ? 1 : 0;
+    int resolved_down = (last_vertical == 2) ? 1 : 0;
+    int resolved_left = (last_horizontal == 2) ? 1 : 0;
+    int resolved_right = (last_horizontal == 1) ? 1 : 0;
+
+    int dpad = resolved_up | (resolved_down << 1) | (resolved_left << 2) | (resolved_right << 3);
     report.dpad = dpad_lut[dpad];
 
     if (memcmp(&prev_report, &report, sizeof(report))) {
