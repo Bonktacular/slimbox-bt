@@ -468,9 +468,10 @@ static void handle_buttons() {
     report.r2_axis = report.r2 * 255;
     report.l2 = gpio_pin_get_dt(&buttons[17]);
     report.l2_axis = report.l2 * 255;
-
-    int dpad = gpio_pin_get_dt(&buttons[6]) | (gpio_pin_get_dt(&buttons[8]) << 1) | (gpio_pin_get_dt(&buttons[9]) << 2) | (gpio_pin_get_dt(&buttons[7]) << 3);
-
+    
+    // Alter SOCD cleaning to prefer the last direction pressed
+    // int dpad = gpio_pin_get_dt(&buttons[6]) | (gpio_pin_get_dt(&buttons[8]) << 1) | (gpio_pin_get_dt(&buttons[9]) << 2) | (gpio_pin_get_dt(&buttons[7]) << 3);
+    int dpad = (gpio_pin_get_dt(&buttons[6]) << 0) | (gpio_pin_get_dt(&buttons[7]) << 1) | (gpio_pin_get_dt(&buttons[8]) << 2) | (gpio_pin_get_dt(&buttons[9]) << 3);
     report.dpad = dpad_lut[dpad];
 
     if (memcmp(&prev_report, &report, sizeof(report))) {
