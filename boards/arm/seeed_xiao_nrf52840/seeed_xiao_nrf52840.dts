@@ -134,7 +134,7 @@
 		reg = <0>;
 		writeoc = "pp4o";
 		readoc = "read4io";
-		sck-frequency = <16000000>;
+		sck-frequency = <32000000>;
 		label = "GD25Q16";
 		jedec-id = [c8 40 15];
 		size = <16777216>;

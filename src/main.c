@@ -35,7 +35,7 @@ static const struct gpio_dt_spec expander_reset = GPIO_DT_SPEC_GET(DT_ALIAS(expa
 #define REPORT_ID_IDX 0
 #define REPORT_LEN 10
 
-#define HIDS_QUEUE_SIZE 10
+#define HIDS_QUEUE_SIZE 20
 
 #define DISCONNECTED_SLEEP_TIMEOUT K_SECONDS(60)
 #define CONNECTED_SLEEP_TIMEOUT K_SECONDS(600)
@@ -205,6 +205,14 @@ static void connected(struct bt_conn* conn, uint8_t err) {
     LOG_INF("%s", addr);
 
     CHK(bt_hids_connected(&hids_obj, conn));
+
+    struct bt_le_conn_param param = {
+        .interval_min = 6,
+        .interval_max = 6,
+        .latency = 0,
+        .timeout = 100,
+    };
+    CHK(bt_conn_le_param_update(conn, &param));
 
     k_work_reschedule(&sleep_work, CONNECTED_SLEEP_TIMEOUT);
 }
@@ -392,13 +400,13 @@ static void report_sent_cb(struct bt_conn* conn, void* user_data) {
 }
 
 static void hids_work_fn(struct k_work* work) {
-    uint8_t report[REPORT_LEN];
+    uint8_t report_buf[REPORT_LEN];
 
-    while (!k_msgq_get(&hids_queue, report, K_NO_WAIT)) {
+    while (!k_msgq_get(&hids_queue, report_buf, K_NO_WAIT)) {
         if (active_conn != NULL) {
             k_work_reschedule(&sleep_work, CONNECTED_SLEEP_TIMEOUT);
-            LOG_DBG("Sending report...");
-            CHK(bt_hids_inp_rep_send(&hids_obj, active_conn, REPORT_ID_IDX, report, REPORT_LEN, report_sent_cb));
+            LOG_DBG("Sending queued report...");
+            CHK(bt_hids_inp_rep_send(&hids_obj, active_conn, REPORT_ID_IDX, report_buf, REPORT_LEN, report_sent_cb));
         }
     }
 }
@@ -466,8 +474,16 @@ static void handle_buttons() {
     report.dpad = dpad_lut[dpad];
 
     if (memcmp(&prev_report, &report, sizeof(report))) {
-        k_msgq_put(&hids_queue, &report, K_NO_WAIT);
-        k_work_submit(&hids_work);
+        if (active_conn != NULL) {
+            k_work_reschedule(&sleep_work, CONNECTED_SLEEP_TIMEOUT);
+            int err = bt_hids_inp_rep_send(&hids_obj, active_conn, REPORT_ID_IDX,
+                                           (uint8_t*)&report, REPORT_LEN, report_sent_cb);
+            if (err) {
+                LOG_DBG("Direct send failed (%d), queueing", err);
+                k_msgq_put(&hids_queue, &report, K_NO_WAIT);
+                k_work_submit(&hids_work);
+            }
+        }
         memcpy(&prev_report, &report, sizeof(report));
     }
 }
@@ -495,7 +511,7 @@ int main() {
     configure_buttons();
 
     while (1) {
-        k_sleep(K_MSEC(1));
+        k_usleep(500);
         handle_buttons();
     }
 }
